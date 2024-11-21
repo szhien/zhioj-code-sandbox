@@ -3,12 +3,13 @@ package com.zhien.zhiojcodesandbox;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.io.resource.ResourceUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.dfa.WordTree;
 import com.zhien.zhiojcodesandbox.model.ExecuteCodeRequest;
 import com.zhien.zhiojcodesandbox.model.ExecuteCodeResponse;
 import com.zhien.zhiojcodesandbox.model.ExecuteMessage;
 import com.zhien.zhiojcodesandbox.model.JudgeInfo;
+import com.zhien.zhiojcodesandbox.security.MySecurityManager;
 import com.zhien.zhiojcodesandbox.utils.ProcessUtils;
-import org.springframework.util.StringUtils;
 
 import java.io.File;
 import java.io.IOException;
@@ -36,13 +37,35 @@ import java.util.UUID;
  * 先编写示例代码，注意要去掉包名，放到 resources 目录下：
  */
 public class JavaNativeCodeSandbox implements CodeSandbox {
+
+    // 全局代码存放根目录
+    private static final String GLOBAL_CODE_ROOT_DIR_NAME = "src/main/resources/tempCode";
+    private static final String GLOBAL_JAVA_CLASS_NAME = "Main.java";
+    // 自定义的安全管理器编译后文件存放目录
+    private static final String MY_SECURITY_MANAGER_CLASS_PATH = "src/main/resources/security";
+    // 自定义安全管理器编译文件名
+    private static final String MY_SECURITY_MANAGER_NAME = "MySecurityManager";
+    //超时时间
+    private static final Long TIME_OUT = 5000L;
+    //操作黑名单
+    private static final List<String> blackList = Arrays.asList("Files", "exec");
+    //初始化字典树
+    private static final WordTree WORDTREE;
+
+    static {
+        WORDTREE = new WordTree();
+        WORDTREE.addWords(blackList);
+    }
+
+
     public static void main(String[] args) {
         CodeSandbox codeSandbox = new JavaNativeCodeSandbox();
         ExecuteCodeRequest executeCodeRequest = new ExecuteCodeRequest();
 //        String code = ResourceUtil.readStr("testCode/InterMain.java", StandardCharsets.UTF_8);
         //测试不安全代码
 //        String code = ResourceUtil.readStr("unsafeCode/SleepError.java", StandardCharsets.UTF_8);
-        String code = ResourceUtil.readStr("unsafeCode/OutOfMemoryError.java", StandardCharsets.UTF_8);
+//        String code = ResourceUtil.readStr("unsafeCode/OutOfMemoryError.java", StandardCharsets.UTF_8);
+        String code = ResourceUtil.readStr("unsafeCode/FileLeakageError.java", StandardCharsets.UTF_8);
         executeCodeRequest.setCode(code);
         executeCodeRequest.setLanguage("java");
         executeCodeRequest.setInputList(Arrays.asList("1 2", "2 3"));
@@ -50,17 +73,21 @@ public class JavaNativeCodeSandbox implements CodeSandbox {
         System.out.println("executeCodeResponse = " + executeCodeResponse);
     }
 
-
-    // 全局代码存放根目录
-    private static final String GLOBAL_CODE_ROOT_DIR_NAME = "src/main/resources/tempCode";
-    private static final String GLOBAL_JAVA_CLASS_NAME = "Main.java";
-
     @Override
     public ExecuteCodeResponse executeCode(ExecuteCodeRequest executeCodeRequest) {
+        //开启自定义安全管理器
+        System.setSecurityManager(new MySecurityManager());
+
         List<String> inputList = executeCodeRequest.getInputList();
         String language = executeCodeRequest.getLanguage();
         String code = executeCodeRequest.getCode();
         ExecuteCodeResponse executeCodeResponse = new ExecuteCodeResponse();
+        //0.判断代码是否合法
+//        FoundWord foundWord = WORDTREE.matchWord(code);
+//        if (foundWord != null) {
+//            System.out.println("包含禁止词：" + foundWord.getFoundWord());
+//            return null;
+//        }
         //1.把用户的代码保存为文件
         String userDir = System.getProperty("user.dir");
         String globalCodeRootFullPath = userDir + File.separator + GLOBAL_CODE_ROOT_DIR_NAME;  // File.separator是文件路径分隔符,可以适配多系统
@@ -77,29 +104,36 @@ public class JavaNativeCodeSandbox implements CodeSandbox {
         // 2.编译代码，得到 class 文件
         // 使用 Process 类在终端执行命令：
         String compileCmd = String.format("javac -encoding utf-8 %s", userCodeFile.getAbsolutePath());
-        Process compileProcess = null;
         try {
-            compileProcess = Runtime.getRuntime().exec(compileCmd);
+            Process compileProcess = Runtime.getRuntime().exec(compileCmd);
             // 获取编译执行结果
             ProcessUtils.runProcessAndGetMessage(compileProcess, "Compile");
-
         } catch (IOException e) {
             return getErrorExecuteCodeResponse(e);
         }
 
         // 3.执行代码，得到输出结果
-        Process runProcess = null;
-        ExecuteMessage runExecuteMessage = null;
         // 输出信息集合
         List<ExecuteMessage> executeMessageList = new ArrayList<>();
+        String mySecurityManagerClassPath = userDir + File.separator + MY_SECURITY_MANAGER_CLASS_PATH;
         for (String inputArgs : inputList) {
-            String runCmd = String.format("java -Dfile.encoding=UTF-8 -cp %s Main %s", userCodeParentPath, inputArgs);
+            String runCmd = String.format("java -Xmx256m -Dfile.encoding=UTF-8 -cp %s;%s -Djava.security.manager=%s Main %s", userCodeParentPath, mySecurityManagerClassPath, MY_SECURITY_MANAGER_NAME, inputArgs);
             // String runCmd = String.format("java -Dfile.encoding=UTF-8 -cp %s Main", userCodeParentPath); //交互式执行
             try {
                 // 在终端开始执行命令：
-                runProcess = Runtime.getRuntime().exec(runCmd);
+                Process runProcess = Runtime.getRuntime().exec(runCmd);
+                // 超时控制
+                new Thread(() -> {
+                    try {
+                        Thread.sleep(TIME_OUT);
+                        System.out.println("超时了，中断");
+                        runProcess.destroy();
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                }).start();
                 // 等待并获取执行结果
-                runExecuteMessage = ProcessUtils.runProcessAndGetMessage(runProcess, "Run");
+                ExecuteMessage runExecuteMessage = ProcessUtils.runProcessAndGetMessage(runProcess, "Run");
                 //  runExecuteMessage = ProcessUtils.runInterProcessAndGetMessage(runProcess, inputArgs); //交互式执行
                 executeMessageList.add(runExecuteMessage);
             } catch (IOException e) {
@@ -126,6 +160,7 @@ public class JavaNativeCodeSandbox implements CodeSandbox {
         if (executeMessageList.size() == outputList.size()) {
             executeCodeResponse.setStatus(1); //执行成功
         }
+        executeCodeResponse.setOutputList(outputList);
         JudgeInfo judgeInfo = new JudgeInfo();
         // judgeInfo.setMessage();
         // judgeInfo.setMemory();

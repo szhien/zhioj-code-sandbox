@@ -28,6 +28,7 @@ public class ProcessUtils {
             // 开启计时器
             StopWatch stopWatch = new StopWatch();
             stopWatch.start();
+
             // 等待程序执行，获取错误码
             int exitValue = runProcess.waitFor();
             executeMessage.setExitValue(exitValue);
@@ -40,7 +41,7 @@ public class ProcessUtils {
                 // 逐行读取
                 String compileOutputLine;
                 while ((compileOutputLine = bufferedReader.readLine()) != null) {
-                    compileOutputStringBuilder.append(compileOutputLine);
+                    compileOutputStringBuilder.append(compileOutputLine).append("\n");
                 }
                 executeMessage.setMessage(compileOutputStringBuilder.toString());
             } else {
@@ -52,7 +53,7 @@ public class ProcessUtils {
                 // 逐行读取
                 String compileOutputLine;
                 while ((compileOutputLine = bufferedReader.readLine()) != null) {
-                    compileOutputStringBuilder.append(compileOutputLine);
+                    compileOutputStringBuilder.append(compileOutputLine).append("\n");
                 }
                 executeMessage.setMessage(compileOutputStringBuilder.toString());
 
@@ -63,7 +64,7 @@ public class ProcessUtils {
                 // 逐行读取
                 String errorCompileOutputLine;
                 while ((errorCompileOutputLine = errorBufferedReader.readLine()) != null) {
-                    errorCompileOutputStringBuilder.append(errorCompileOutputLine);
+                    errorCompileOutputStringBuilder.append(errorCompileOutputLine).append("\n");
                 }
                 executeMessage.setErrorMessage(errorCompileOutputStringBuilder.toString());
             }
@@ -77,7 +78,7 @@ public class ProcessUtils {
     }
 
     /**
-     *  执行交互式进程并获取信息
+     * 执行交互式进程并获取信息
      *
      * @param runProcess
      * @param args
