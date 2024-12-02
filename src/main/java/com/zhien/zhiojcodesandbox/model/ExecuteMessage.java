@@ -32,4 +32,7 @@ public class ExecuteMessage {
     // 执行时间
     private Long executeTime;
 
+    //内存占用
+    private Long usageMemory;
+
 }
