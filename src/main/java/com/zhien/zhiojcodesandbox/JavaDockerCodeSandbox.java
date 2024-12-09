@@ -13,6 +13,7 @@ import com.github.dockerjava.core.command.ExecStartResultCallback;
 import com.zhien.zhiojcodesandbox.model.ExecuteCodeRequest;
 import com.zhien.zhiojcodesandbox.model.ExecuteCodeResponse;
 import com.zhien.zhiojcodesandbox.model.ExecuteMessage;
+import org.springframework.stereotype.Component;
 
 import java.io.Closeable;
 import java.io.File;
@@ -29,6 +30,7 @@ import java.util.concurrent.TimeUnit;
  * @description Java Docker代码沙箱实现:模版方法实现
  * @createDate 2024/11/29 16:59
  */
+@Component
 public class JavaDockerCodeSandbox extends JavaCodeSandboxTemplate {
     //超时时间
     private static final Long TIME_OUT = 5000L;
